@@ -1,135 +1,39 @@
 /* =========================================================
    AI MUSIC — APP.JS
-   Front-end music community
+   Supabase-powered music community
    ========================================================= */
 
+
 /* =========================
-   SAMPLE MUSIC
+   SUPABASE
 ========================= */
 
-const defaultSongs = [
-    {
-        id: 1,
-        title: "Blood Moon",
-        artist: "M Mehrad",
-        genre: "Dark Pop",
-        emoji: "🌙",
-        plays: 8420,
-        likes: 1240,
-        liked: false,
-        saved: false,
-        following: false
-    },
-    {
-        id: 2,
-        title: "Neon Dreams",
-        artist: "Luna AI",
-        genre: "Electronic",
-        emoji: "🌌",
-        plays: 7210,
-        likes: 986,
-        liked: false,
-        saved: false,
-        following: false
-    },
-    {
-        id: 3,
-        title: "Lost Again",
-        artist: "Echo",
-        genre: "R&B",
-        emoji: "🖤",
-        plays: 6340,
-        likes: 812,
-        liked: false,
-        saved: false,
-        following: false
-    },
-    {
-        id: 4,
-        title: "Digital Heart",
-        artist: "Nova",
-        genre: "Pop",
-        emoji: "💜",
-        plays: 5980,
-        likes: 745,
-        liked: false,
-        saved: false,
-        following: false
-    },
-    {
-        id: 5,
-        title: "Into The Night",
-        artist: "Midnight",
-        genre: "Cinematic",
-        emoji: "🌃",
-        plays: 5120,
-        likes: 690,
-        liked: false,
-        saved: false,
-        following: false
-    },
-    {
-        id: 6,
-        title: "Broken Signals",
-        artist: "Static",
-        genre: "Rock",
-        emoji: "⚡",
-        plays: 4760,
-        likes: 601,
-        liked: false,
-        saved: false,
-        following: false
-    },
-    {
-        id: 7,
-        title: "Future Love",
-        artist: "Aria",
-        genre: "Pop",
-        emoji: "✨",
-        plays: 4310,
-        likes: 577,
-        liked: false,
-        saved: false,
-        following: false
-    },
-    {
-        id: 8,
-        title: "After Midnight",
-        artist: "Void",
-        genre: "Ambient",
-        emoji: "🌑",
-        plays: 3890,
-        likes: 498,
-        liked: false,
-        saved: false,
-        following: false
-    }
-];
+const SUPABASE_URL =
+    "https://rbvrzpmzqtbjhfxfckpr.supabase.co";
+
+const SUPABASE_KEY =
+    "   sb_publishable_75J1VdJpGb1h2FcjcMfHjw_ngSbruD9";
+
+const supabaseClient =
+    supabase.createClient(
+        SUPABASE_URL,
+        SUPABASE_KEY
+    );
 
 
 /* =========================
-   STORAGE
+   APP STATE
 ========================= */
 
-let songs =
-    JSON.parse(localStorage.getItem("aiMusicSongs"))
-    || defaultSongs;
+let songs = [];
 
-let playlists =
-    JSON.parse(localStorage.getItem("aiMusicPlaylists"))
-    || [];
+let playlists = [];
 
-let likedSongs =
-    JSON.parse(localStorage.getItem("aiMusicLiked"))
-    || [];
+let likedSongs = [];
 
-let savedSongs =
-    JSON.parse(localStorage.getItem("aiMusicSaved"))
-    || [];
+let savedSongs = [];
 
-let followedArtists =
-    JSON.parse(localStorage.getItem("aiMusicFollowing"))
-    || [];
+let followedArtists = [];
 
 let currentSongIndex = -1;
 
@@ -189,35 +93,161 @@ const toast =
 
 
 /* =========================
-   SAVE DATA
+   AUTH
 ========================= */
 
-function saveData() {
+async function getCurrentUser() {
 
-    localStorage.setItem(
-        "aiMusicSongs",
-        JSON.stringify(songs)
-    );
+    const {
+        data,
+        error
+    } = await supabaseClient.auth.getUser();
 
-    localStorage.setItem(
-        "aiMusicPlaylists",
-        JSON.stringify(playlists)
-    );
+    if (error) {
+        console.error(error);
+        return null;
+    }
 
-    localStorage.setItem(
-        "aiMusicLiked",
-        JSON.stringify(likedSongs)
-    );
+    return data.user;
+}
 
-    localStorage.setItem(
-        "aiMusicSaved",
-        JSON.stringify(savedSongs)
-    );
 
-    localStorage.setItem(
-        "aiMusicFollowing",
-        JSON.stringify(followedArtists)
-    );
+/* =========================
+   LOAD SONGS
+========================= */
+
+async function loadSongs() {
+
+    const {
+        data,
+        error
+    } = await supabaseClient
+        .from("songs")
+        .select("*")
+        .order("created_at", {
+            ascending: false
+        });
+
+    if (error) {
+
+        console.error(
+            "Failed to load songs:",
+            error
+        );
+
+        showToast(
+            "Failed to load songs."
+        );
+
+        return;
+    }
+
+    songs = data || [];
+
+    renderSongs();
+}
+
+
+/* =========================
+   LOAD USER DATA
+========================= */
+
+async function loadUserData() {
+
+    const user =
+        await getCurrentUser();
+
+    if (!user) {
+
+        likedSongs = [];
+        savedSongs = [];
+        followedArtists = [];
+        playlists = [];
+
+        return;
+    }
+
+
+    /* =========================
+       LIKES
+    ========================= */
+
+    const {
+        data: likesData,
+        error: likesError
+    } = await supabaseClient
+        .from("likes")
+        .select("song_id")
+        .eq("user_id", user.id);
+
+    if (!likesError) {
+
+        likedSongs =
+            (likesData || [])
+            .map(item => item.song_id);
+    }
+
+
+    /* =========================
+       SAVED SONGS
+    ========================= */
+
+    const {
+        data: savedData,
+        error: savedError
+    } = await supabaseClient
+        .from("saved_songs")
+        .select("song_id")
+        .eq("user_id", user.id);
+
+    if (!savedError) {
+
+        savedSongs =
+            (savedData || [])
+            .map(item => item.song_id);
+    }
+
+
+    /* =========================
+       FOLLOWING
+    ========================= */
+
+    const {
+        data: followsData,
+        error: followsError
+    } = await supabaseClient
+        .from("follows")
+        .select("following_id")
+        .eq("follower_id", user.id);
+
+    if (!followsError) {
+
+        followedArtists =
+            (followsData || [])
+            .map(item => item.following_id);
+    }
+
+
+    /* =========================
+       PLAYLISTS
+    ========================= */
+
+    const {
+        data: playlistsData,
+        error: playlistsError
+    } = await supabaseClient
+        .from("playlists")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", {
+            ascending: false
+        });
+
+    if (!playlistsError) {
+
+        playlists =
+            playlistsData || [];
+    }
 }
 
 
@@ -227,25 +257,96 @@ function saveData() {
 
 function formatNumber(number) {
 
+    number =
+        Number(number) || 0;
+
     if (number >= 1000000) {
+
         return (
             (number / 1000000)
-            .toFixed(1)
-            .replace(".0", "")
+                .toFixed(1)
+                .replace(".0", "")
             + "M"
         );
     }
 
     if (number >= 1000) {
+
         return (
             (number / 1000)
-            .toFixed(1)
-            .replace(".0", "")
+                .toFixed(1)
+                .replace(".0", "")
             + "K"
         );
     }
 
     return number;
+}
+
+
+/* =========================
+   GET COVER URL
+========================= */
+
+function getCoverUrl(song) {
+
+    if (!song.cover_url) {
+
+        return "";
+    }
+
+    if (
+        song.cover_url.startsWith(
+            "http"
+        )
+    ) {
+
+        return song.cover_url;
+    }
+
+    const {
+        data
+    } = supabaseClient
+        .storage
+        .from("covers")
+        .getPublicUrl(
+            song.cover_url
+        );
+
+    return data.publicUrl;
+}
+
+
+/* =========================
+   GET AUDIO URL
+========================= */
+
+function getAudioUrl(song) {
+
+    if (!song.audio_url) {
+
+        return "";
+    }
+
+    if (
+        song.audio_url.startsWith(
+            "http"
+        )
+    ) {
+
+        return song.audio_url;
+    }
+
+    const {
+        data
+    } = supabaseClient
+        .storage
+        .from("songs")
+        .getPublicUrl(
+            song.audio_url
+        );
+
+    return data.publicUrl;
 }
 
 
@@ -262,68 +363,110 @@ function createSongCard(song) {
         savedSongs.includes(song.id);
 
     const isFollowing =
-        followedArtists.includes(song.artist);
+        followedArtists.includes(
+            song.artist_id
+        );
+
+    const coverUrl =
+        getCoverUrl(song);
+
 
     return `
         <article
             class="music-card"
-            data-id="${song.id}"
+            data-id="${escapeHTML(song.id)}"
         >
 
             <div
                 class="cover"
-                onclick="playSongById(${song.id})"
+                onclick="playSongById('${escapeAttribute(song.id)}')"
             >
-                ${song.emoji || "🎵"}
+
+                ${
+                    coverUrl
+                    ? `
+                        <img
+                            src="${escapeAttribute(coverUrl)}"
+                            alt="${escapeHTML(song.title)}"
+                        >
+                    `
+                    : "🎵"
+                }
+
             </div>
+
 
             <div class="music-card-content">
 
                 <h3>
-                    ${escapeHTML(song.title)}
+                    ${escapeHTML(
+                        song.title || "Untitled"
+                    )}
                 </h3>
 
+
                 <span class="artist">
-                    ${escapeHTML(song.artist)}
+                    ${escapeHTML(
+                        song.artist_name ||
+                        song.artist ||
+                        "Unknown Artist"
+                    )}
                 </span>
+
 
                 <div class="song-meta">
 
                     <span>
-                        ${escapeHTML(song.genre)}
+                        ${escapeHTML(
+                            song.genre ||
+                            "Unknown"
+                        )}
                     </span>
 
                     <span>
-                        ▶ ${formatNumber(song.plays)}
+                        ▶
+                        ${formatNumber(
+                            song.plays
+                        )}
                     </span>
 
                 </div>
 
+
                 <div class="card-actions">
 
                     <button
-                        onclick="event.stopPropagation(); playSongById(${song.id})"
+                        onclick="event.stopPropagation(); playSongById('${escapeAttribute(song.id)}')"
                     >
                         ▶
                     </button>
 
+
                     <button
-                        onclick="event.stopPropagation(); toggleLike(${song.id})"
+                        onclick="event.stopPropagation(); toggleLike('${escapeAttribute(song.id)}')"
                     >
                         ${isLiked ? "❤️" : "♡"}
-                        ${formatNumber(song.likes)}
+                        ${formatNumber(
+                            song.likes
+                        )}
                     </button>
 
-                    <button
-                        onclick="event.stopPropagation(); toggleSave(${song.id})"
-                    >
-                        ${isSaved ? "🔖" : "🔖"}
-                    </button>
 
                     <button
-                        onclick="event.stopPropagation(); toggleFollow('${escapeAttribute(song.artist)}')"
+                        onclick="event.stopPropagation(); toggleSave('${escapeAttribute(song.id)}')"
                     >
-                        ${isFollowing ? "Following" : "Follow"}
+                        🔖
+                    </button>
+
+
+                    <button
+                        onclick="event.stopPropagation(); toggleFollow('${escapeAttribute(song.artist_id || "")}')"
+                    >
+                        ${
+                            isFollowing
+                            ? "Following"
+                            : "Follow"
+                        }
                     </button>
 
                 </div>
@@ -339,15 +482,21 @@ function createSongCard(song) {
    RENDER SONGS
 ========================= */
 
-function renderSongs(list = songs) {
+function renderSongs(
+    list = songs
+) {
 
     if (!musicGrid) return;
 
     musicGrid.innerHTML =
-        list.map(createSongCard).join("");
+        list
+            .map(createSongCard)
+            .join("");
 
     renderTrending();
+
     renderNewReleases();
+
     renderFollowing();
 }
 
@@ -362,11 +511,17 @@ function renderTrending() {
 
     const trending =
         [...songs]
-        .sort((a, b) => b.plays - a.plays)
-        .slice(0, 6);
+            .sort(
+                (a, b) =>
+                    (b.plays || 0) -
+                    (a.plays || 0)
+            )
+            .slice(0, 6);
 
     trendingGrid.innerHTML =
-        trending.map(createSongCard).join("");
+        trending
+            .map(createSongCard)
+            .join("");
 }
 
 
@@ -380,11 +535,12 @@ function renderNewReleases() {
 
     const newest =
         [...songs]
-        .reverse()
-        .slice(0, 6);
+            .slice(0, 6);
 
     newGrid.innerHTML =
-        newest.map(createSongCard).join("");
+        newest
+            .map(createSongCard)
+            .join("");
 }
 
 
@@ -398,25 +554,36 @@ function renderFollowing() {
 
     const following =
         songs.filter(song =>
-            followedArtists.includes(song.artist)
+            followedArtists.includes(
+                song.artist_id
+            )
         );
+
 
     if (!following.length) {
 
         followingGrid.innerHTML = `
             <div class="empty-state">
-                <h3>No artists followed yet</h3>
+
+                <h3>
+                    No artists followed yet
+                </h3>
+
                 <p>
                     Follow artists to see their music here.
                 </p>
+
             </div>
         `;
 
         return;
     }
 
+
     followingGrid.innerHTML =
-        following.map(createSongCard).join("");
+        following
+            .map(createSongCard)
+            .join("");
 }
 
 
@@ -424,34 +591,105 @@ function renderFollowing() {
    LIKE
 ========================= */
 
-function toggleLike(id) {
+async function toggleLike(id) {
+
+    const user =
+        await getCurrentUser();
+
+    if (!user) {
+
+        showToast(
+            "Please sign in to like songs."
+        );
+
+        return;
+    }
+
 
     const song =
-        songs.find(item => item.id === id);
+        songs.find(
+            item =>
+                String(item.id) ===
+                String(id)
+        );
 
     if (!song) return;
 
-    if (likedSongs.includes(id)) {
+
+    if (
+        likedSongs.includes(id)
+    ) {
+
+        const {
+            error
+        } = await supabaseClient
+            .from("likes")
+            .delete()
+            .eq("song_id", id)
+            .eq("user_id", user.id);
+
+
+        if (error) {
+
+            console.error(error);
+
+            showToast(
+                "Failed to remove like."
+            );
+
+            return;
+        }
+
 
         likedSongs =
-            likedSongs.filter(item => item !== id);
+            likedSongs.filter(
+                item =>
+                    String(item) !==
+                    String(id)
+            );
 
-        song.likes =
-            Math.max(0, song.likes - 1);
 
-        showToast("Removed from liked songs");
+        showToast(
+            "Removed from liked songs"
+        );
 
     } else {
 
+        const {
+            error
+        } = await supabaseClient
+            .from("likes")
+            .insert({
+
+                song_id: id,
+
+                user_id: user.id
+
+            });
+
+
+        if (error) {
+
+            console.error(error);
+
+            showToast(
+                "Failed to like song."
+            );
+
+            return;
+        }
+
+
         likedSongs.push(id);
 
-        song.likes++;
 
-        showToast("Added to liked songs ❤️");
+        showToast(
+            "Added to liked songs ❤️"
+        );
     }
 
-    saveData();
-    renderSongs();
+
+    await loadSongs();
 }
 
 
@@ -459,24 +697,92 @@ function toggleLike(id) {
    SAVE
 ========================= */
 
-function toggleSave(id) {
+async function toggleSave(id) {
 
-    if (savedSongs.includes(id)) {
+    const user =
+        await getCurrentUser();
+
+    if (!user) {
+
+        showToast(
+            "Please sign in to save songs."
+        );
+
+        return;
+    }
+
+
+    if (
+        savedSongs.includes(id)
+    ) {
+
+        const {
+            error
+        } = await supabaseClient
+            .from("saved_songs")
+            .delete()
+            .eq("song_id", id)
+            .eq("user_id", user.id);
+
+
+        if (error) {
+
+            console.error(error);
+
+            showToast(
+                "Failed to remove saved song."
+            );
+
+            return;
+        }
+
 
         savedSongs =
-            savedSongs.filter(item => item !== id);
+            savedSongs.filter(
+                item =>
+                    String(item) !==
+                    String(id)
+            );
 
-        showToast("Removed from saved songs");
+
+        showToast(
+            "Removed from saved songs"
+        );
 
     } else {
 
+        const {
+            error
+        } = await supabaseClient
+            .from("saved_songs")
+            .insert({
+
+                song_id: id,
+
+                user_id: user.id
+
+            });
+
+
+        if (error) {
+
+            console.error(error);
+
+            showToast(
+                "Failed to save song."
+            );
+
+            return;
+        }
+
+
         savedSongs.push(id);
 
-        showToast("Song saved 🔖");
-    }
 
-    saveData();
-    renderSongs();
+        showToast(
+            "Song saved 🔖"
+        );
+    }
 }
 
 
@@ -484,25 +790,118 @@ function toggleSave(id) {
    FOLLOW
 ========================= */
 
-function toggleFollow(artist) {
+async function toggleFollow(
+    artistId
+) {
 
-    if (followedArtists.includes(artist)) {
+    const user =
+        await getCurrentUser();
+
+    if (!user) {
+
+        showToast(
+            "Please sign in to follow artists."
+        );
+
+        return;
+    }
+
+
+    if (!artistId) {
+
+        showToast(
+            "Artist information is unavailable."
+        );
+
+        return;
+    }
+
+
+    if (
+        followedArtists.includes(
+            artistId
+        )
+    ) {
+
+        const {
+            error
+        } = await supabaseClient
+            .from("follows")
+            .delete()
+            .eq(
+                "following_id",
+                artistId
+            )
+            .eq(
+                "follower_id",
+                user.id
+            );
+
+
+        if (error) {
+
+            console.error(error);
+
+            showToast(
+                "Failed to unfollow artist."
+            );
+
+            return;
+        }
+
 
         followedArtists =
             followedArtists.filter(
-                item => item !== artist
+                item =>
+                    String(item) !==
+                    String(artistId)
             );
 
-        showToast(`Unfollowed ${artist}`);
+
+        showToast(
+            "Artist unfollowed"
+        );
 
     } else {
 
-        followedArtists.push(artist);
+        const {
+            error
+        } = await supabaseClient
+            .from("follows")
+            .insert({
 
-        showToast(`Following ${artist} 👤`);
+                following_id:
+                    artistId,
+
+                follower_id:
+                    user.id
+
+            });
+
+
+        if (error) {
+
+            console.error(error);
+
+            showToast(
+                "Failed to follow artist."
+            );
+
+            return;
+        }
+
+
+        followedArtists.push(
+            artistId
+        );
+
+
+        showToast(
+            "Artist followed 👤"
+        );
     }
 
-    saveData();
+
     renderSongs();
 }
 
@@ -511,44 +910,66 @@ function toggleFollow(artist) {
    PLAY SONG
 ========================= */
 
-function playSongById(id) {
+async function playSongById(id) {
 
     const index =
-        songs.findIndex(song => song.id === id);
+        songs.findIndex(
+            song =>
+                String(song.id) ===
+                String(id)
+        );
 
     if (index === -1) return;
 
-    currentSongIndex = index;
+    currentSongIndex =
+        index;
 
     const song =
         songs[currentSongIndex];
 
     loadSong(song);
 
-    song.plays++;
 
-    saveData();
+    const audioUrl =
+        getAudioUrl(song);
 
-    renderSongs();
 
-    audio.play()
-        .then(() => {
+    if (!audioUrl) {
 
-            isPlaying = true;
+        showToast(
+            "This song has no audio file."
+        );
 
-            updatePlayButton();
+        return;
+    }
 
-        })
-        .catch(() => {
 
-            isPlaying = false;
+    audio.src =
+        audioUrl;
 
-            updatePlayButton();
+    audio.load();
 
-            showToast(
-                "This demo song has no audio file yet."
-            );
-        });
+
+    try {
+
+        await audio.play();
+
+        isPlaying = true;
+
+        updatePlayButton();
+
+    } catch (error) {
+
+        console.error(error);
+
+        isPlaying = false;
+
+        updatePlayButton();
+
+        showToast(
+            "Unable to play this song."
+        );
+    }
 }
 
 
@@ -558,31 +979,72 @@ function playSongById(id) {
 
 function loadSong(song) {
 
-    musicPlayer.classList.remove("hidden");
+    if (!musicPlayer) return;
 
-    playerTitle.textContent =
-        song.title;
+    musicPlayer.classList.remove(
+        "hidden"
+    );
 
-    playerArtist.textContent =
-        song.artist;
 
-    playerCover.textContent =
-        song.emoji || "🎵";
+    if (playerTitle) {
 
-    if (song.audio) {
-        audio.src = song.audio;
-        audio.load();
-    } else {
-        audio.removeAttribute("src");
+        playerTitle.textContent =
+            song.title ||
+            "Untitled";
     }
 
-    progressBar.value = 0;
 
-    currentTimeElement.textContent =
-        "0:00";
+    if (playerArtist) {
 
-    durationElement.textContent =
-        "0:00";
+        playerArtist.textContent =
+            song.artist_name ||
+            song.artist ||
+            "Unknown Artist";
+    }
+
+
+    if (playerCover) {
+
+        const coverUrl =
+            getCoverUrl(song);
+
+
+        if (coverUrl) {
+
+            playerCover.innerHTML = `
+                <img
+                    src="${escapeAttribute(coverUrl)}"
+                    alt="${escapeHTML(song.title || "Song")}"
+                >
+            `;
+
+        } else {
+
+            playerCover.textContent =
+                "🎵";
+        }
+    }
+
+
+    if (progressBar) {
+
+        progressBar.value =
+            0;
+    }
+
+
+    if (currentTimeElement) {
+
+        currentTimeElement.textContent =
+            "0:00";
+    }
+
+
+    if (durationElement) {
+
+        durationElement.textContent =
+            "0:00";
+    }
 }
 
 
@@ -592,41 +1054,46 @@ function loadSong(song) {
 
 function togglePlay() {
 
-    if (currentSongIndex === -1) {
+    if (
+        currentSongIndex === -1
+    ) {
 
         if (songs.length) {
-            playSongById(songs[0].id);
+
+            playSongById(
+                songs[0].id
+            );
         }
 
         return;
     }
 
+
     const song =
         songs[currentSongIndex];
 
-    if (!song.audio) {
+
+    if (!getAudioUrl(song)) {
 
         showToast(
-            "Upload an audio file to play this song."
+            "This song has no audio file."
         );
 
         return;
     }
 
+
     if (isPlaying) {
 
         audio.pause();
 
-        isPlaying = false;
-
     } else {
 
-        audio.play();
-
-        isPlaying = true;
+        audio.play()
+            .catch(error =>
+                console.error(error)
+            );
     }
-
-    updatePlayButton();
 }
 
 
@@ -639,7 +1106,9 @@ function updatePlayButton() {
     if (!playButton) return;
 
     playButton.textContent =
-        isPlaying ? "❚❚" : "▶";
+        isPlaying
+        ? "❚❚"
+        : "▶";
 }
 
 
@@ -651,19 +1120,28 @@ function nextSong() {
 
     if (!songs.length) return;
 
-    if (currentSongIndex === -1) {
 
-        playSongById(songs[0].id);
+    if (
+        currentSongIndex === -1
+    ) {
+
+        playSongById(
+            songs[0].id
+        );
 
         return;
     }
 
-    currentSongIndex =
-        (currentSongIndex + 1)
-        % songs.length;
+
+    const nextIndex =
+        (
+            currentSongIndex +
+            1
+        ) % songs.length;
+
 
     playSongById(
-        songs[currentSongIndex].id
+        songs[nextIndex].id
     );
 }
 
@@ -676,19 +1154,29 @@ function previousSong() {
 
     if (!songs.length) return;
 
-    if (currentSongIndex === -1) {
 
-        playSongById(songs[0].id);
+    if (
+        currentSongIndex === -1
+    ) {
+
+        playSongById(
+            songs[0].id
+        );
 
         return;
     }
 
-    currentSongIndex =
-        (currentSongIndex - 1 + songs.length)
-        % songs.length;
+
+    const previousIndex =
+        (
+            currentSongIndex -
+            1 +
+            songs.length
+        ) % songs.length;
+
 
     playSongById(
-        songs[currentSongIndex].id
+        songs[previousIndex].id
     );
 }
 
@@ -701,11 +1189,24 @@ audio.addEventListener(
     "loadedmetadata",
     () => {
 
-        durationElement.textContent =
-            formatTime(audio.duration);
+        if (
+            durationElement
+        ) {
 
-        progressBar.max =
-            audio.duration;
+            durationElement.textContent =
+                formatTime(
+                    audio.duration
+                );
+        }
+
+
+        if (
+            progressBar
+        ) {
+
+            progressBar.max =
+                audio.duration;
+        }
     }
 );
 
@@ -714,13 +1215,28 @@ audio.addEventListener(
     "timeupdate",
     () => {
 
-        if (!audio.duration) return;
+        if (!audio.duration)
+            return;
 
-        progressBar.value =
-            audio.currentTime;
 
-        currentTimeElement.textContent =
-            formatTime(audio.currentTime);
+        if (
+            progressBar
+        ) {
+
+            progressBar.value =
+                audio.currentTime;
+        }
+
+
+        if (
+            currentTimeElement
+        ) {
+
+            currentTimeElement.textContent =
+                formatTime(
+                    audio.currentTime
+                );
+        }
     }
 );
 
@@ -760,36 +1276,59 @@ audio.addEventListener(
 );
 
 
-progressBar.addEventListener(
-    "input",
-    () => {
+if (progressBar) {
 
-        audio.currentTime =
-            Number(progressBar.value);
-    }
-);
+    progressBar.addEventListener(
+        "input",
+        () => {
+
+            audio.currentTime =
+                Number(
+                    progressBar.value
+                );
+        }
+    );
+}
 
 
 /* =========================
    FORMAT TIME
 ========================= */
 
-function formatTime(seconds) {
+function formatTime(
+    seconds
+) {
 
-    if (!seconds || isNaN(seconds)) {
+    if (
+        !seconds ||
+        isNaN(seconds)
+    ) {
+
         return "0:00";
     }
 
+
     const minutes =
-        Math.floor(seconds / 60);
+        Math.floor(
+            seconds / 60
+        );
+
 
     const remaining =
-        Math.floor(seconds % 60);
+        Math.floor(
+            seconds % 60
+        );
+
 
     return (
         minutes +
         ":" +
-        String(remaining).padStart(2, "0")
+        String(
+            remaining
+        ).padStart(
+            2,
+            "0"
+        )
     );
 }
 
@@ -806,8 +1345,9 @@ if (searchInput) {
 
             const query =
                 searchInput.value
-                .trim()
-                .toLowerCase();
+                    .trim()
+                    .toLowerCase();
+
 
             if (!query) {
 
@@ -816,36 +1356,69 @@ if (searchInput) {
                 return;
             }
 
+
             const results =
-                songs.filter(song =>
+                songs.filter(
+                    song => {
 
-                    song.title
-                    .toLowerCase()
-                    .includes(query)
+                        const title =
+                            String(
+                                song.title ||
+                                ""
+                            ).toLowerCase();
 
-                    ||
 
-                    song.artist
-                    .toLowerCase()
-                    .includes(query)
+                        const artist =
+                            String(
+                                song.artist_name ||
+                                song.artist ||
+                                ""
+                            ).toLowerCase();
 
-                    ||
 
-                    song.genre
-                    .toLowerCase()
-                    .includes(query)
+                        const genre =
+                            String(
+                                song.genre ||
+                                ""
+                            ).toLowerCase();
+
+
+                        return (
+                            title.includes(
+                                query
+                            ) ||
+                            artist.includes(
+                                query
+                            ) ||
+                            genre.includes(
+                                query
+                            )
+                        );
+                    }
                 );
 
-            renderSongs(results);
 
-            if (!results.length) {
+            renderSongs(
+                results
+            );
+
+
+            if (
+                !results.length &&
+                musicGrid
+            ) {
 
                 musicGrid.innerHTML = `
                     <div class="empty-state">
-                        <h3>No results found</h3>
+
+                        <h3>
+                            No results found
+                        </h3>
+
                         <p>
                             Try another song, artist or genre.
                         </p>
+
                     </div>
                 `;
             }
@@ -861,78 +1434,146 @@ if (searchInput) {
 function showAllSongs() {
 
     if (searchInput) {
-        searchInput.value = "";
+
+        searchInput.value =
+            "";
     }
+
 
     renderSongs();
 
-    scrollToSection("explore");
+    scrollToSection(
+        "explore"
+    );
 }
 
 
 /* =========================
-   PLAYLISTS
+   CREATE PLAYLIST
 ========================= */
 
 function createPlaylist() {
 
     const modal =
-        document.getElementById("playlistModal");
+        document.getElementById(
+            "playlistModal"
+        );
+
 
     if (!modal) return;
 
-    modal.classList.remove("hidden");
+
+    modal.classList.remove(
+        "hidden"
+    );
 }
 
 
 function closePlaylistModal() {
 
     const modal =
-        document.getElementById("playlistModal");
+        document.getElementById(
+            "playlistModal"
+        );
+
 
     if (!modal) return;
 
-    modal.classList.add("hidden");
+
+    modal.classList.add(
+        "hidden"
+    );
 }
 
 
+/* =========================
+   PLAYLIST FORM
+========================= */
+
 const playlistForm =
-    document.getElementById("playlistForm");
+    document.getElementById(
+        "playlistForm"
+    );
 
 
 if (playlistForm) {
 
     playlistForm.addEventListener(
         "submit",
-        event => {
+        async event => {
 
             event.preventDefault();
 
+
+            const user =
+                await getCurrentUser();
+
+
+            if (!user) {
+
+                showToast(
+                    "Please sign in to create playlists."
+                );
+
+                return;
+            }
+
+
             const input =
-                document.getElementById("playlistName");
+                document.getElementById(
+                    "playlistName"
+                );
+
 
             const name =
                 input.value.trim();
 
+
             if (!name) return;
 
-            playlists.push({
 
-                id: Date.now(),
+            const {
+                data,
+                error
+            } = await supabaseClient
+                .from("playlists")
+                .insert({
 
-                name: name,
+                    name: name,
 
-                songs: []
+                    user_id:
+                        user.id
 
-            });
+                })
+                .select()
+                .single();
 
-            saveData();
 
-            input.value = "";
+            if (error) {
+
+                console.error(error);
+
+                showToast(
+                    "Failed to create playlist."
+                );
+
+                return;
+            }
+
+
+            playlists.unshift(
+                data
+            );
+
+
+            input.value =
+                "";
+
 
             closePlaylistModal();
 
             renderPlaylists();
+
 
             showToast(
                 "Playlist created 🎵"
@@ -950,10 +1591,12 @@ function renderPlaylists() {
 
     if (!playlistGrid) return;
 
+
     if (!playlists.length) {
 
         playlistGrid.innerHTML = `
             <div class="playlist-card">
+
                 <div class="playlist-icon">
                     🎵
                 </div>
@@ -965,35 +1608,46 @@ function renderPlaylists() {
                 <p>
                     Create your first playlist.
                 </p>
+
             </div>
         `;
 
         return;
     }
 
+
     playlistGrid.innerHTML =
-        playlists.map(playlist => `
+        playlists
+            .map(
+                playlist => `
 
-            <div
-                class="playlist-card"
-                onclick="openPlaylist(${playlist.id})"
-            >
+                    <div
+                        class="playlist-card"
+                        onclick="openPlaylist('${escapeAttribute(playlist.id)}')"
+                    >
 
-                <div class="playlist-icon">
-                    🎧
-                </div>
+                        <div class="playlist-icon">
+                            🎧
+                        </div>
 
-                <h3>
-                    ${escapeHTML(playlist.name)}
-                </h3>
+                        <h3>
+                            ${escapeHTML(
+                                playlist.name
+                            )}
+                        </h3>
 
-                <p>
-                    ${playlist.songs.length} songs
-                </p>
+                        <p>
+                            ${formatNumber(
+                                playlist.song_count ||
+                                0
+                            )}
+                            songs
+                        </p>
 
-            </div>
-
-        `).join("");
+                    </div>
+                `
+            )
+            .join("");
 }
 
 
@@ -1001,16 +1655,55 @@ function renderPlaylists() {
    OPEN PLAYLIST
 ========================= */
 
-function openPlaylist(id) {
+async function openPlaylist(id) {
 
-    const playlist =
-        playlists.find(
-            item => item.id === id
+    const user =
+        await getCurrentUser();
+
+
+    if (!user) {
+
+        showToast(
+            "Please sign in to open playlists."
         );
 
-    if (!playlist) return;
+        return;
+    }
 
-    if (!playlist.songs.length) {
+
+    const {
+        data,
+        error
+    } = await supabaseClient
+        .from("playlist_songs")
+        .select(
+            "song_id"
+        )
+        .eq(
+            "playlist_id",
+            id
+        )
+        .order(
+            "created_at",
+            {
+                ascending: true
+            }
+        );
+
+
+    if (error) {
+
+        console.error(error);
+
+        showToast(
+            "Failed to open playlist."
+        );
+
+        return;
+    }
+
+
+    if (!data || !data.length) {
 
         showToast(
             "This playlist is empty."
@@ -1019,8 +1712,13 @@ function openPlaylist(id) {
         return;
     }
 
+
+    const firstSong =
+        data[0].song_id;
+
+
     playSongById(
-        playlist.songs[0]
+        firstSong
     );
 }
 
@@ -1032,22 +1730,34 @@ function openPlaylist(id) {
 function openUploadModal() {
 
     const modal =
-        document.getElementById("uploadModal");
+        document.getElementById(
+            "uploadModal"
+        );
+
 
     if (!modal) return;
 
-    modal.classList.remove("hidden");
+
+    modal.classList.remove(
+        "hidden"
+    );
 }
 
 
 function closeUploadModal() {
 
     const modal =
-        document.getElementById("uploadModal");
+        document.getElementById(
+            "uploadModal"
+        );
+
 
     if (!modal) return;
 
-    modal.classList.add("hidden");
+
+    modal.classList.add(
+        "hidden"
+    );
 }
 
 
@@ -1056,45 +1766,68 @@ function closeUploadModal() {
 ========================= */
 
 const uploadForm =
-    document.getElementById("uploadForm");
+    document.getElementById(
+        "uploadForm"
+    );
 
 
 if (uploadForm) {
 
     uploadForm.addEventListener(
         "submit",
-        event => {
+        async event => {
 
             event.preventDefault();
+
+
+            const user =
+                await getCurrentUser();
+
+
+            if (!user) {
+
+                showToast(
+                    "Please sign in to upload songs."
+                );
+
+                return;
+            }
+
 
             const title =
                 document.getElementById(
                     "songTitle"
                 ).value.trim();
 
+
             const artist =
                 document.getElementById(
                     "artistName"
                 ).value.trim();
+
 
             const genre =
                 document.getElementById(
                     "songGenre"
                 ).value;
 
+
             const audioInput =
                 document.getElementById(
                     "audioInput"
                 );
+
 
             const coverInput =
                 document.getElementById(
                     "coverInput"
                 );
 
+
             if (
                 !title ||
                 !artist ||
+                !audioInput ||
                 !audioInput.files.length
             ) {
 
@@ -1105,60 +1838,194 @@ if (uploadForm) {
                 return;
             }
 
+
             const audioFile =
                 audioInput.files[0];
 
-            const audioURL =
-                URL.createObjectURL(
-                    audioFile
+
+            const audioExtension =
+                audioFile.name
+                    .split(".")
+                    .pop();
+
+
+            const audioPath =
+                `${user.id}/${crypto.randomUUID()}.${audioExtension}`;
+
+
+            /* =========================
+               UPLOAD AUDIO
+            ========================= */
+
+            const {
+                error:
+                    audioUploadError
+            } = await supabaseClient
+                .storage
+                .from("songs")
+                .upload(
+                    audioPath,
+                    audioFile,
+                    {
+                        cacheControl:
+                            "3600",
+
+                        upsert:
+                            false,
+
+                        contentType:
+                            audioFile.type
+                    }
                 );
 
-            let emoji = "🎵";
 
-            const newSong = {
+            if (
+                audioUploadError
+            ) {
 
-                id: Date.now(),
+                console.error(
+                    audioUploadError
+                );
 
-                title: title,
+                showToast(
+                    "Failed to upload audio."
+                );
 
-                artist: artist,
+                return;
+            }
 
-                genre: genre,
 
-                emoji: emoji,
+            /* =========================
+               UPLOAD COVER
+            ========================= */
 
-                audio: audioURL,
+            let coverPath =
+                null;
 
-                plays: 0,
 
-                likes: 0,
+            if (
+                coverInput &&
+                coverInput.files.length
+            ) {
 
-                liked: false,
+                const coverFile =
+                    coverInput.files[0];
 
-                saved: false,
 
-                following: false
-            };
+                const coverExtension =
+                    coverFile.name
+                        .split(".")
+                        .pop();
 
-            /*
-             IMPORTANT:
 
-             Object URLs are temporary.
-             They are good for this browser session.
+                coverPath =
+                    `${user.id}/${crypto.randomUUID()}.${coverExtension}`;
 
-             Later we will connect real
-             cloud storage for permanent uploads.
-            */
 
-            songs.unshift(newSong);
+                const {
+                    error:
+                        coverUploadError
+                } = await supabaseClient
+                    .storage
+                    .from("covers")
+                    .upload(
+                        coverPath,
+                        coverFile,
+                        {
+                            cacheControl:
+                                "3600",
 
-            saveData();
+                            upsert:
+                                false,
+
+                            contentType:
+                                coverFile.type
+                        }
+                    );
+
+
+                if (
+                    coverUploadError
+                ) {
+
+                    console.error(
+                        coverUploadError
+                    );
+
+                    showToast(
+                        "Failed to upload cover."
+                    );
+
+                    return;
+                }
+            }
+
+
+            /* =========================
+               CREATE SONG RECORD
+            ========================= */
+
+            const {
+                data: songData,
+                error: songError
+            } = await supabaseClient
+                .from("songs")
+                .insert({
+
+                    title:
+                        title,
+
+                    artist:
+                        artist,
+
+                    genre:
+                        genre,
+
+                    audio_url:
+                        audioPath,
+
+                    cover_url:
+                        coverPath,
+
+                    user_id:
+                        user.id,
+
+                    plays:
+                        0,
+
+                    likes:
+                        0
+
+                })
+                .select()
+                .single();
+
+
+            if (songError) {
+
+                console.error(
+                    songError
+                );
+
+                showToast(
+                    "Failed to publish song."
+                );
+
+                return;
+            }
+
+
+            songs.unshift(
+                songData
+            );
+
 
             uploadForm.reset();
 
             closeUploadModal();
 
             renderSongs();
+
 
             showToast(
                 "Song published successfully 🎉"
@@ -1175,17 +2042,24 @@ if (uploadForm) {
 function openProfile() {
 
     const profile =
-        document.getElementById("profile");
+        document.getElementById(
+            "profile"
+        );
+
 
     if (!profile) return;
+
 
     profile.classList.remove(
         "hidden-section"
     );
 
+
     profile.scrollIntoView({
-        behavior: "smooth"
+        behavior:
+            "smooth"
     });
+
 
     updateProfile();
 }
@@ -1198,47 +2072,68 @@ function updateProfile() {
             "followersCount"
         );
 
+
     const following =
         document.getElementById(
             "followingCount"
         );
+
 
     const songsCount =
         document.getElementById(
             "songsCount"
         );
 
+
     const plays =
         document.getElementById(
             "playsCount"
         );
 
+
     if (followers) {
+
         followers.textContent =
             followedArtists.length;
     }
 
+
     if (following) {
+
         following.textContent =
             followedArtists.length;
     }
 
+
     if (songsCount) {
+
         songsCount.textContent =
             songs.length;
     }
+
 
     if (plays) {
 
         const total =
             songs.reduce(
-                (sum, song) =>
-                    sum + song.plays,
+                (
+                    sum,
+                    song
+                ) =>
+                    sum +
+                    (
+                        Number(
+                            song.plays
+                        ) || 0
+                    ),
                 0
             );
 
+
         plays.textContent =
-            formatNumber(total);
+            formatNumber(
+                total
+            );
     }
 }
 
@@ -1250,17 +2145,22 @@ function editProfile() {
             "Enter your display name:"
         );
 
+
     if (!name) return;
+
 
     const profileName =
         document.getElementById(
             "profileName"
         );
 
+
     if (profileName) {
+
         profileName.textContent =
             name;
     }
+
 
     showToast(
         "Profile updated."
@@ -1288,10 +2188,12 @@ if (themeButton) {
                 "light-mode"
             );
 
+
             const light =
                 document.body.classList.contains(
                     "light-mode"
                 );
+
 
             localStorage.setItem(
                 "aiMusicTheme",
@@ -1300,8 +2202,11 @@ if (themeButton) {
                     : "dark"
             );
 
+
             themeButton.textContent =
-                light ? "☀" : "☾";
+                light
+                    ? "☀"
+                    : "☾";
         }
     );
 }
@@ -1314,14 +2219,21 @@ function loadTheme() {
             "aiMusicTheme"
         );
 
-    if (theme === "light") {
+
+    if (
+        theme ===
+        "light"
+    ) {
 
         document.body.classList.add(
             "light-mode"
         );
 
+
         if (themeButton) {
-            themeButton.textContent = "☀";
+
+            themeButton.textContent =
+                "☀";
         }
     }
 }
@@ -1334,12 +2246,17 @@ function loadTheme() {
 function scrollToSection(id) {
 
     const element =
-        document.getElementById(id);
+        document.getElementById(
+            id
+        );
+
 
     if (!element) return;
 
+
     element.scrollIntoView({
-        behavior: "smooth"
+        behavior:
+            "smooth"
     });
 }
 
@@ -1350,25 +2267,37 @@ function scrollToSection(id) {
 
 let toastTimer;
 
+
 function showToast(message) {
 
     if (!toast) return;
 
+
     toast.textContent =
         message;
 
-    toast.classList.add("show");
 
-    clearTimeout(toastTimer);
+    toast.classList.add(
+        "show"
+    );
+
+
+    clearTimeout(
+        toastTimer
+    );
+
 
     toastTimer =
-        setTimeout(() => {
+        setTimeout(
+            () => {
 
-            toast.classList.remove(
-                "show"
-            );
+                toast.classList.remove(
+                    "show"
+                );
 
-        }, 2500);
+            },
+            2500
+        );
 }
 
 
@@ -1378,20 +2307,45 @@ function showToast(message) {
 
 function escapeHTML(value) {
 
-    return String(value)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
+    return String(
+        value ?? ""
+    )
+        .replaceAll(
+            "&",
+            "&amp;"
+        )
+        .replaceAll(
+            "<",
+            "&lt;"
+        )
+        .replaceAll(
+            ">",
+            "&gt;"
+        )
+        .replaceAll(
+            '"',
+            "&quot;"
+        )
+        .replaceAll(
+            "'",
+            "&#039;"
+        );
 }
 
 
 function escapeAttribute(value) {
 
-    return String(value)
-        .replaceAll("\\", "\\\\")
-        .replaceAll("'", "\\'");
+    return String(
+        value ?? ""
+    )
+        .replaceAll(
+            "\\",
+            "\\\\"
+        )
+        .replaceAll(
+            "'",
+            "\\'"
+        );
 }
 
 
@@ -1408,22 +2362,47 @@ window.addEventListener(
                 "uploadModal"
             );
 
+
         const playlistModal =
             document.getElementById(
                 "playlistModal"
             );
 
+
         if (
-            event.target === uploadModal
+            event.target ===
+            uploadModal
         ) {
+
             closeUploadModal();
         }
 
+
         if (
-            event.target === playlistModal
+            event.target ===
+            playlistModal
         ) {
+
             closePlaylistModal();
         }
+    }
+);
+
+
+/* =========================
+   AUTH STATE
+========================= */
+
+supabaseClient.auth.onAuthStateChange(
+    async () => {
+
+        await loadUserData();
+
+        renderSongs();
+
+        renderPlaylists();
+
+        updateProfile();
     }
 );
 
@@ -1432,9 +2411,13 @@ window.addEventListener(
    INITIALIZE
 ========================= */
 
-function initializeApp() {
+async function initializeApp() {
 
     loadTheme();
+
+    await loadSongs();
+
+    await loadUserData();
 
     renderSongs();
 
